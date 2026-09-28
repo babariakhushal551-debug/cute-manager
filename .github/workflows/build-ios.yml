@@ -55,10 +55,12 @@ jobs:
           # and the toolchain then rejects the header's SWIFT_RETURNS_RETAINED
           # constructor annotations. Force Swift 5 mode + drop the annotations.
           PKG=node_modules/expo-modules-jsi/apple/Package.swift
-          sed -i.bak -e 's/swiftLanguageModes: \[.v6\],/swiftLanguageModes: [.v5],/' \
-                     -e 's/swiftLanguageModes: \[.v6/\n swiftLanguageModes: [.v5/' \
-                     -e 's/\.v6\]/.v5]/g' "$PKG"
-          grep -n "swiftLanguageModes" "$PKG"
+          # Remove the two .enableUpcomingFeature lines — with Swift 6.2.3 they
+          # surface data-race errors in the package's own nonisolated(unsafe)
+          # captures. The remaining settings stay untouched.
+          sed -i.bak '/enableUpcomingFeature("NonisolatedNonsendingByDefault")/d; /enableUpcomingFeature("InferIsolatedConformances")/d' "$PKG"
+          rm -f "$PKG.bak"
+          grep -c "enableUpcomingFeature" "$PKG" || echo "upcoming features removed"
           # Belt & braces: force language mode via xcodebuild setting later too.
           FILE=node_modules/expo-modules-jsi/apple/Sources/ExpoModulesJSI-Cxx/include/RuntimeScheduler.h
           sed -i.bak -E 's/[[:space:]]*SWIFT_RETURNS_(RETAINED|UNRETAINED) RuntimeScheduler/ RuntimeScheduler/g' "$FILE"
