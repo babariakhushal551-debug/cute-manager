@@ -1,0 +1,71 @@
+{
+  "expo": {
+    "name": "Cute Manager",
+    "slug": "cute-manager",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "scheme": "cute-manager",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.freecuff.cutemanager",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "Cute Manager lets you attach screenshots and photos to your inbox so the AI can understand them.",
+        "NSPhotoLibraryAddUsageDescription": "Cute Manager can save images you choose back to your photo library.",
+        "NSMicrophoneUsageDescription": "Cute Manager records voice notes only when you tap the microphone.",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "associatedDomains": [
+        "applinks:cute-manager.freebuff.app"
+      ]
+    },
+    "android": {
+      "package": "com.freecuff.cutemanager",
+      "adaptiveIcon": {
+        "backgroundColor": "#FFFFFF",
+        "foregroundImage": "./assets/adaptive-icon.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-share-intent",
+        {
+          "iosActivationRules": {
+            "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
+            "NSExtensionActivationSupportsWebPageWithMaxCount": 1,
+            "NSExtensionActivationSupportsText": true,
+            "NSExtensionActivationSupportsImageWithMaxCount": 1,
+            "NSExtensionActivationSupportsMovieWithMaxCount": 1,
+            "NSExtensionActivationSupportsFileWithMaxCount": 1
+          },
+          "iosShareExtensionName": "ShareToCuteManager"
+        }
+      ],
+      "expo-image",
+      "expo-asset",
+      "expo-sharing",
+      "expo-web-browser",
+      "expo-notifications",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 220,
+          "resizeMode": "contain",
+          "backgroundColor": "#FFFFFF"
+        }
+      ],
+      "expo-font",
+      "expo-audio"
+    ],
+    "experiments": {
+      "typedRoutes": false
+    }
+  }
+}
