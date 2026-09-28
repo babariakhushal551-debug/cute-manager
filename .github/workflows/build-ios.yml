@@ -7,7 +7,7 @@ name: Build iOS IPA
 on:
   workflow_dispatch: {}
   push:
-    branches: [main]
+    branches: [master, main]
     paths-ignore:
       - "**.md"
 
@@ -24,25 +24,23 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: cute-manager/package-lock.json
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
-        working-directory: cute-manager
         run: npm ci
 
       - name: Prebuild native iOS project (generates ios/ incl. share extension)
-        working-directory: cute-manager
         run: npx expo prebuild --platform ios --no-install --clean
 
       - name: Setup Xcode
         run: sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
 
       - name: Resolve packages
-        working-directory: cute-manager/ios
+        working-directory: ios
         run: xcodebuild -resolvePackageDependencies
 
       - name: Build unsigned IPA (archive + export without signing)
-        working-directory: cute-manager/ios
+        working-directory: ios
         run: |
           set -euo pipefail
           xcodebuild \
@@ -62,6 +60,6 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: cute-manager-unsigned-ipa
-          path: cute-manager/ios/build/cute-unsigned.ipa
+          path: ios/build/cute-unsigned.ipa
           if-no-files-found: error
           retention-days: 30
