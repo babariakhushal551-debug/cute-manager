@@ -29,29 +29,40 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Prebuild native iOS project (generates ios/ incl. share extension)
-        run: npx expo prebuild --platform ios --no-install --clean
+      - name: Prebuild native iOS project (generates ios/ incl. share extension + pods)
+        run: npx expo prebuild --platform ios --clean
+        env:
+          EXPO_NO_TELEMETRY: 1
 
-      - name: Setup Xcode
-        run: sudo xcode-select -s /Applications/Xcode_16.4.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
-
-      - name: Resolve packages
+      - name: Install CocoaPods (if Podfile present)
         working-directory: ios
-        run: xcodebuild -resolvePackageDependencies
+        run: |
+          if [ -f Podfile ]; then
+            pod install
+          else
+            echo "No Podfile — SPM-based project, skipping pod install"
+          fi
 
-      - name: Build unsigned IPA (archive + export without signing)
+      - name: Build unsigned IPA (archive + zip without signing)
         working-directory: ios
         run: |
           set -euo pipefail
+          WORKSPACE=$(ls -d *.xcworkspace 2>/dev/null | grep -v Pods | head -1)
+          if [ -z "$WORKSPACE" ]; then
+            WORKSPACE=$(ls -d *.xcodeproj | head -1)
+          fi
+          SCHEME="${WORKSPACE%.xcworkspace}"
+          SCHEME="${SCHEME%.xcodeproj}"
+          echo "Using workspace: $WORKSPACE — scheme: $SCHEME"
           xcodebuild \
-            -workspace cute.xcworkspace \
-            -scheme cute \
+            -workspace "$WORKSPACE" \
+            -scheme "$SCHEME" \
             -configuration Release \
             -destination "generic/platform=iOS" \
-            -archivePath build/cute.xcarchive \
-            archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO AD_HOC_CODE_SIGNING_ALLOWED=YES
+            -archivePath build/app.xcarchive \
+            archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
           mkdir -p build/Payload
-          cp -R build/cute.xcarchive/Products/Applications/cute.app build/Payload/
+          cp -R "build/app.xcarchive/Products/Applications/$SCHEME.app" build/Payload/
           cd build
           zip -qry cute-unsigned.ipa Payload
           ls -la cute-unsigned.ipa
