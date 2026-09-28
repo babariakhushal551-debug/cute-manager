@@ -34,44 +34,18 @@ jobs:
         env:
           EXPO_NO_TELEMETRY: 1
 
-      - name: Select newest Xcode (26.x required — Swift 6.2 packages)
+      - name: Select Xcode 26.2 (Swift 6.2.1 — matches Expo SDK 57 prebuilts)
         run: |
           set -e
-          echo "Available Xcodes:"
           ls -d /Applications/Xcode*.app 2>/dev/null || true
-          X26=$(ls -d /Applications/Xcode*26*.app 2>/dev/null | sort -V | tail -1 || true)
-          if [ -n "$X26" ]; then
-            echo "Selecting $X26"
-            sudo xcode-select -s "$X26/Contents/Developer"
-          else
-            echo "No Xcode 26 found — using default"
+          XCODE=$(ls -d /Applications/Xcode_26.2*.app 2>/dev/null | sort -V | tail -1 || true)
+          if [ -z "$XCODE" ]; then
+            XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | head -1 || true)
           fi
+          echo "Selecting $XCODE"
+          sudo xcode-select -s "$XCODE/Contents/Developer"
           xcodebuild -version
           swift --version
-
-      - name: Patch expo-modules-jsi for Xcode 26.3 (Swift 6.2.4)
-        run: |
-          set -e
-          # Swift 6.2.4's Clang importer rejects SWIFT_RETURNS_RETAINED on
-          # constructors declared before the class's SWIFT_SHARED_REFERENCE
-          # attribute. The annotations are semantically redundant there
-          # (constructors of shared-reference classes always return +1), so
-          # removing them is safe and unblocks compilation.
-          FILE=node_modules/expo-modules-jsi/apple/Sources/ExpoModulesJSI-Cxx/include/RuntimeScheduler.h
-          sed -i.bak -E 's/[[:space:]]*SWIFT_RETURNS_(RETAINED|UNRETAINED) RuntimeScheduler/ RuntimeScheduler/g' "$FILE"
-          rm -f "$FILE.bak"
-          grep -c "SWIFT_RETURNS_RETAINED" "$FILE" || echo "header patched OK"
-          # Xcode 26.3 ships Swift 6.2.4, where NonisolatedNonsendingByDefault
-          # starts flagging expo's nonisolated(unsafe) pointer captures as
-          # data races. The code was written for 6.2.1 — disable the feature.
-          PKG=node_modules/expo-modules-jsi/apple/Package.swift
-          # Swift 6 language mode + Xcode 26.3's stricter region isolation
-          # flags expo's nonisolated(unsafe) pointer captures. Package was
-          # written for Swift 6.2.1 — compile it in Swift 5 mode instead.
-          sed -i.bak -e '/NonisolatedNonsendingByDefault/d' -e 's/swiftLanguageModes: \[.v6\],/swiftLanguageModes: [.v5],/' "$PKG"
-          rm -f "$PKG.bak"
-          grep -c "NonisolatedNonsendingByDefault" "$PKG" || echo "package patched OK"
-          grep -n "swiftLanguageModes" "$PKG"
 
       - name: Install CocoaPods (if Podfile present)
         working-directory: ios
