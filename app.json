@@ -15,10 +15,7 @@
         "NSPhotoLibraryAddUsageDescription": "Cute Manager can save images you choose back to your photo library.",
         "NSMicrophoneUsageDescription": "Cute Manager records voice notes only when you tap the microphone.",
         "ITSAppUsesNonExemptEncryption": false
-      },
-      "associatedDomains": [
-        "applinks:cute-manager.freebuff.app"
-      ]
+      }
     },
     "android": {
       "package": "com.freecuff.cutemanager",
@@ -51,7 +48,6 @@
       "expo-asset",
       "expo-sharing",
       "expo-web-browser",
-      "expo-notifications",
       [
         "expo-splash-screen",
         {
