@@ -47,6 +47,24 @@ jobs:
           xcodebuild -version
           swift --version
 
+      - name: Patch expo-modules-jsi Swift settings (SwiftPM emits .v6 despite swiftLanguageModes)
+        run: |
+          set -e
+          # The nested SPM build emits -swift-version 6 with
+          # NonisolatedNonsendingByDefault regardless of swiftLanguageModes,
+          # and the toolchain then rejects the header's SWIFT_RETURNS_RETAINED
+          # constructor annotations. Force Swift 5 mode + drop the annotations.
+          PKG=node_modules/expo-modules-jsi/apple/Package.swift
+          sed -i.bak -e 's/swiftLanguageModes: \[.v6\],/swiftLanguageModes: [.v5],/' \
+                     -e 's/swiftLanguageModes: \[.v6/\n swiftLanguageModes: [.v5/' \
+                     -e 's/\.v6\]/.v5]/g' "$PKG"
+          grep -n "swiftLanguageModes" "$PKG"
+          # Belt & braces: force language mode via xcodebuild setting later too.
+          FILE=node_modules/expo-modules-jsi/apple/Sources/ExpoModulesJSI-Cxx/include/RuntimeScheduler.h
+          sed -i.bak -E 's/[[:space:]]*SWIFT_RETURNS_(RETAINED|UNRETAINED) RuntimeScheduler/ RuntimeScheduler/g' "$FILE"
+          rm -f "$FILE.bak"
+          echo "header annotations removed"
+
       - name: Install CocoaPods (if Podfile present)
         working-directory: ios
         run: |
@@ -73,7 +91,8 @@ jobs:
             -configuration Release \
             -destination "generic/platform=iOS" \
             -archivePath build/app.xcarchive \
-            archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO
+            archive CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+                    SWIFT_VERSION=5.0
           mkdir -p build/Payload
           cp -R "build/app.xcarchive/Products/Applications/$SCHEME.app" build/Payload/
           cd build
