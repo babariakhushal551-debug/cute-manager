@@ -13,7 +13,9 @@ on:
 
 jobs:
   build:
-    runs-on: macos-15
+    # macOS 26 image: Expo SDK 57 requires Xcode 26.4+ (older toolchains reject
+    # expo-modules-jsi's Swift source; see expo/expo#47819).
+    runs-on: macos-26
     timeout-minutes: 90
     steps:
       - name: Checkout
@@ -34,57 +36,18 @@ jobs:
         env:
           EXPO_NO_TELEMETRY: 1
 
-      - name: Select Xcode 26.2
+      - name: Select Xcode 26.4.1 (minimum required by Expo SDK 57)
         run: |
           set -e
           ls -d /Applications/Xcode*.app 2>/dev/null || true
-          XCODE=$(ls -d /Applications/Xcode_26.2*.app 2>/dev/null | sort -V | tail -1 || true)
+          XCODE=$(ls -d /Applications/Xcode_26.4*.app 2>/dev/null | sort -V | tail -1 || true)
           if [ -z "$XCODE" ]; then
-            XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | head -1 || true)
+            XCODE=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1 || true)
           fi
           echo "Selecting $XCODE"
           sudo xcode-select -s "$XCODE/Contents/Developer"
           xcodebuild -version
           swift --version
-
-      - name: Patch expo-modules-jsi for Swift 5 mode (manifest + regex flag + build script)
-        run: |
-          set -e
-          # The pristine manifest declares swiftLanguageModes: [.v6], so the
-          # nested SwiftPM build compiles ExpoModulesJSI with -swift-version 6,
-          # where strict "sending" checks reject the package's closures
-          # ("risks causing data races", exit 65). Expo builds this package in
-          # Swift 5 mode upstream — pin it back and fix the two v5-mode gaps.
-          PKG=node_modules/expo-modules-jsi/apple/Package.swift
-          # 1) Primary lever: Swift 5 language mode (proved to compile the whole
-          #    package in run 78375d0 once upcoming features are dropped).
-          sed -i.bak 's/swiftLanguageModes: \[.v6\],/swiftLanguageModes: [.v5],/' "$PKG"
-          rm -f "$PKG.bak"
-          # 2) Drop upcoming features: NonisolatedNonsendingByDefault turns on
-          #    the data-race checks even in v5 mode; InferIsolatedConformances
-          #    infers @JavaScriptActor isolation for LongLivedObject conformances,
-          #    breaking stored-property default initializers.
-          sed -i.bak '/enableUpcomingFeature("NonisolatedNonsendingByDefault")/d; /enableUpcomingFeature("InferIsolatedConformances")/d' "$PKG"
-          rm -f "$PKG.bak"
-          # 3) In v5 mode the package's single bare-slash regex literal no longer
-          #    parses ('$' is not a valid digit). App targets get
-          #    -enable-bare-slash-regex automatically; SPM targets must pass it.
-          perl -0pi -e 's/(\.unsafeFlags\(swiftIncludeFlags\),\n)/$1        .unsafeFlags(["-enable-bare-slash-regex"]),\n/' "$PKG"
-          grep -n "swiftLanguageModes\|bare-slash" "$PKG"
-          if grep -q "\.v6" "$PKG"; then echo "ERROR: .v6 still present in Package.swift"; exit 1; fi
-          # 4) Belt & braces: force SWIFT_VERSION=5.0 in the nested
-          #    build-xcframework.sh xcodebuild invocation as well.
-          SCRIPT=node_modules/expo-modules-jsi/apple/scripts/build-xcframework.sh
-          # (plain mid-line substitution: no backslash/newline escaping issues)
-          sed -i.bak 's/SWIFT_COMPILATION_MODE=wholemodule/SWIFT_VERSION=5.0 SWIFT_COMPILATION_MODE=wholemodule/' "$SCRIPT"
-          rm -f "$SCRIPT.bak"
-          grep -n "SWIFT_VERSION" "$SCRIPT"
-          # 5) Strip SWIFT_RETURNS_RETAINED ctor annotations from the C++ header
-          #    (the Swift 6.2 importer rejects them in this configuration).
-          FILE=node_modules/expo-modules-jsi/apple/Sources/ExpoModulesJSI-Cxx/include/RuntimeScheduler.h
-          sed -i.bak -E 's/[[:space:]]*SWIFT_RETURNS_(RETAINED|UNRETAINED) RuntimeScheduler/ RuntimeScheduler/g' "$FILE"
-          rm -f "$FILE.bak"
-          echo "expo-modules-jsi patched for Swift 5 mode"
 
       - name: Install CocoaPods (if Podfile present)
         working-directory: ios
