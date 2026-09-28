@@ -60,7 +60,14 @@ jobs:
           FILE=node_modules/expo-modules-jsi/apple/Sources/ExpoModulesJSI-Cxx/include/RuntimeScheduler.h
           sed -i.bak -E 's/[[:space:]]*SWIFT_RETURNS_(RETAINED|UNRETAINED) RuntimeScheduler/ RuntimeScheduler/g' "$FILE"
           rm -f "$FILE.bak"
-          grep -c "SWIFT_RETURNS_RETAINED" "$FILE" || echo "patched OK"
+          grep -c "SWIFT_RETURNS_RETAINED" "$FILE" || echo "header patched OK"
+          # Xcode 26.3 ships Swift 6.2.4, where NonisolatedNonsendingByDefault
+          # starts flagging expo's nonisolated(unsafe) pointer captures as
+          # data races. The code was written for 6.2.1 — disable the feature.
+          PKG=node_modules/expo-modules-jsi/apple/Package.swift
+          sed -i.bak '/NonisolatedNonsendingByDefault/d' "$PKG"
+          rm -f "$PKG.bak"
+          grep -c "NonisolatedNonsendingByDefault" "$PKG" || echo "package patched OK"
 
       - name: Install CocoaPods (if Podfile present)
         working-directory: ios
