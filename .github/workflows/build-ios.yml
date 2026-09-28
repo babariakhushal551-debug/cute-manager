@@ -49,6 +49,19 @@ jobs:
           xcodebuild -version
           swift --version
 
+      - name: Patch expo-modules-jsi for Xcode 26.3 (Swift 6.2.4)
+        run: |
+          set -e
+          # Swift 6.2.4's Clang importer rejects SWIFT_RETURNS_RETAINED on
+          # constructors declared before the class's SWIFT_SHARED_REFERENCE
+          # attribute. The annotations are semantically redundant there
+          # (constructors of shared-reference classes always return +1), so
+          # removing them is safe and unblocks compilation.
+          FILE=node_modules/expo-modules-jsi/apple/Sources/ExpoModulesJSI-Cxx/include/RuntimeScheduler.h
+          sed -i.bak -E 's/[[:space:]]*SWIFT_RETURNS_(RETAINED|UNRETAINED) RuntimeScheduler/ RuntimeScheduler/g' "$FILE"
+          rm -f "$FILE.bak"
+          grep -c "SWIFT_RETURNS_RETAINED" "$FILE" || echo "patched OK"
+
       - name: Install CocoaPods (if Podfile present)
         working-directory: ios
         run: |
