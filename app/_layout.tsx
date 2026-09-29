@@ -1,35 +1,21 @@
+import { useEffect, useState } from "react";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useRef, useState } from "react";
-import { AppState as RNAppState, Platform, View } from "react-native";
+import { Platform, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import * as SplashScreen from "expo-splash-screen";
-import { ShareIntentProvider, useShareIntentContext } from "expo-share-intent";
 import { ThemeProvider, useTheme } from "../src/theme/theme";
 import { useStore } from "../src/data/store";
-import { ingestShare } from "../src/capture/shareIntake";
-import { haptic } from "../src/services/haptics";
+import { ErrorBoundary } from "../src/ui/ErrorBoundary";
+import { installGlobalErrorHandlers } from "../src/services/globalErrors";
+// Share handoffs arrive as curio://curio-data deep links, which expo-router
+// dispatches to the app/curio-data.tsx route (cold start AND foreground).
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
-function ShareIntentBridge() {
-  const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntentContext();
-  const lastProcessed = useRef<string>("");
-  useEffect(() => {
-    if (!hasShareIntent || !shareIntent) return;
-    const fingerprint = JSON.stringify(shareIntent);
-    if (lastProcessed.current === fingerprint) return;
-    lastProcessed.current = fingerprint;
-    haptic.tap();
-    void ingestShare({
-      text: shareIntent.text ?? undefined,
-      webUrl: shareIntent.webUrl ?? undefined,
-      files: shareIntent.files?.map((f) => ({ path: f.path, mimeType: f.mimeType, fileName: f.fileName ?? undefined })),
-    }).then(() => resetShareIntent());
-  }, [hasShareIntent, shareIntent, resetShareIntent]);
-  return null;
-}
+// Surface uncaught (non-render) errors instead of dying silently.
+installGlobalErrorHandlers();
 
 function HydrationGate({ children }: { children: React.ReactNode }) {
   const hydrated = useStore((s) => s.hydrated);
@@ -60,7 +46,6 @@ function Shell() {
           contentStyle: { backgroundColor: "transparent" },
         }}
       />
-      <ShareIntentBridge />
     </View>
   );
 }
@@ -73,11 +58,14 @@ export default function RootLayout() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <ThemeProvider>
-          <HydrationGate>
-            <ShareIntentProvider>
+          {/* ErrorBoundary is hook-free and must stay INSIDE ThemeProvider:
+              it catches provider/render crashes below it; anything earlier
+              (gesture/safe-area setup) is covered by the global handler. */}
+          <ErrorBoundary>
+            <HydrationGate>
               <Shell />
-            </ShareIntentProvider>
-          </HydrationGate>
+            </HydrationGate>
+          </ErrorBoundary>
         </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>

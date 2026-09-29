@@ -3,7 +3,7 @@ import { digestStringAsync, CryptoDigestAlgorithm } from "expo-crypto";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type { Classification } from "./aiService";
 
-const CACHE_KEY = "@cute-manager/ai-cache-v1";
+const CACHE_KEY = "@curio/ai-cache-v1";
 const MAX_ENTRIES = 300;
 
 type CacheMap = Record<string, { c: Classification; t: number }>;

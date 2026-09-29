@@ -5,15 +5,17 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useTheme } from "../../src/theme/theme";
 import { useStore } from "../../src/data/store";
 import { scheduleRitualReminders, cancelAllReminders } from "../../src/services/notifications";
+import { hasBuiltinAI } from "../../src/ai/aiService";
 import { Button, Card, Chip, SectionTitle, Symbol } from "../../src/ui/primitives";
 import { haptic } from "../../src/services/haptics";
 import type { Settings } from "../../src/data/types";
 
 const PROVIDERS: { key: Settings["ai"]["provider"]; label: string; hint: string }[] = [
-  { key: "auto", label: "Auto (built-in)", hint: "Smart offline engine. Works without any key." },
+  { key: "auto", label: "Auto (built-in)", hint: "Built-in AI with vision + transcription. Works with zero setup." },
   { key: "openai", label: "OpenAI", hint: "Paste an sk-… key from platform.openai.com" },
   { key: "gemini", label: "Gemini", hint: "Paste a key from aistudio.google.com" },
-  { key: "groq", label: "Groq", hint: "Paste a key from console.groq.com (free tier)" },
+  { key: "groq", label: "Groq", hint: "Paste a key from console.groq.com (free tier, no vision)" },
+  { key: "openrouter", label: "OpenRouter", hint: "Paste a key from openrouter.ai/keys" },
   { key: "heuristic", label: "Offline only", hint: "Never use cloud AI. Everything stays on device." },
 ];
 
@@ -32,7 +34,7 @@ export default function SettingsScreen() {
   async function exportData() {
     const payload = JSON.stringify({ items, projects, tasks }, null, 2);
     try {
-      await Share.share({ message: payload.slice(0, 8000), title: "Cute Manager export" });
+      await Share.share({ message: payload.slice(0, 8000), title: "Curio export" });
     } catch {
       // user cancelled
     }
@@ -62,7 +64,15 @@ export default function SettingsScreen() {
             <Text style={{ ...typography.footnote, color: palette.inkDim, marginTop: space.m, lineHeight: 18 }}>
               {providerInfo.hint}
             </Text>
-            {(settings.ai.provider === "openai" || settings.ai.provider === "gemini" || settings.ai.provider === "groq") && (
+            {settings.ai.provider === "auto" && hasBuiltinAI() ? (
+              <View style={{ marginTop: space.s, flexDirection: "row", alignItems: "center", gap: 6 }}>
+                <Symbol name="sparkles" size={13} color={palette.mint} />
+                <Text style={{ ...typography.footnote, color: palette.mint }}>
+                  Built-in AI is active — vision, transcription and classification included.
+                </Text>
+              </View>
+            ) : null}
+            {settings.ai.provider !== "auto" && settings.ai.provider !== "heuristic" && (
               <View style={{ flexDirection: "row", alignItems: "center", marginTop: space.m, gap: 8 }}>
                 <TextInput
                   value={settings.ai.apiKey}
@@ -110,7 +120,7 @@ export default function SettingsScreen() {
                   updateSettings({ reminders: { ...settings.reminders, enabled: v } });
                   if (v) {
                     const ok = await scheduleRitualReminders(settings.reminders.morningHour, settings.reminders.eveningHour);
-                    if (!ok) Alert.alert("Notifications off", "Enable notifications for Cute Manager in iOS Settings to get reminders.");
+                    if (!ok) Alert.alert("Notifications off", "Enable notifications for Curio in iOS Settings to get reminders.");
                   } else {
                     await cancelAllReminders();
                   }
@@ -145,11 +155,11 @@ export default function SettingsScreen() {
         <View style={{ paddingHorizontal: space.xl }}>
           <Card style={{ padding: space.l, gap: space.s }}>
             {[
-              ["Instagram", "Reel → Share… → Cute Manager"],
-              ["YouTube", "Video → Share… → Cute Manager"],
-              ["WhatsApp", "Message → Share… → Cute Manager"],
-              ["Safari", "Share… → Cute Manager"],
-              ["Photos", "Select screenshot → Share… → Cute Manager"],
+              ["Instagram", "Reel → Share… → Curio"],
+              ["YouTube", "Short → Share… → Curio"],
+              ["WhatsApp", "Message → Share… → Curio"],
+              ["Safari", "Share… → Curio"],
+              ["Photos", "Select photo → Share… → Curio"],
             ].map(([app, how]) => (
               <View key={app} style={{ flexDirection: "row", alignItems: "center", gap: space.m }}>
                 <Symbol name="square.and.arrow.up" size={15} color={palette.pink} />
@@ -158,7 +168,7 @@ export default function SettingsScreen() {
               </View>
             ))}
             <Text style={{ ...typography.footnote, color: palette.inkFaint, marginTop: 4, lineHeight: 18 }}>
-              First time: tap Share → More → enable "Cute Manager".
+              First time: tap Share → More → enable "Curio".
             </Text>
           </Card>
         </View>

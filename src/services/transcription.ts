@@ -1,62 +1,35 @@
-// Voice transcription — OpenAI Whisper / Groq Whisper-compatible endpoints.
-// Falls back gracefully: without a key, voice notes are saved with transcript = null
-// and the app tells the user they can add a key in Settings to auto-transcribe.
-import * as FileSystem from "expo-file-system";
+// Voice transcription via the built-in AI provider (Gemini handles audio
+// natively). Falls back gracefully: without AI, voice notes are saved
+// untranscribed and the UI hints that transcription is unavailable.
+//
+// NOTE: expo-file-system legacy API — the modern SDK 54+ barrel no longer
+// exports getInfoAsync/readAsStringAsync (they throw at runtime).
+import * as FileSystem from "expo-file-system/legacy";
+import { transcribeWithAI } from "../ai/aiService";
 import { useStore } from "../data/store";
 
 export interface TranscriptionResult {
   transcript: string | null;
-  provider: "openai" | "groq" | "none";
-}
-
-async function transcribeWithProvider(
-  fileUri: string,
-  provider: "openai" | "groq",
-  apiKey: string,
-  model?: string,
-): Promise<string | null> {
-  // Read the local recording as base64 and post as multipart via FormData.
-  const fileInfo = await FileSystem.getInfoAsync(fileUri);
-  if (!fileInfo.exists) throw new Error("Recording file missing");
-
-  const endpoint =
-    provider === "groq"
-      ? "https://api.groq.com/openai/v1/audio/transcriptions"
-      : "https://api.openai.com/v1/audio/transcriptions";
-  const modelName = provider === "groq" ? model ?? "whisper-large-v3" : model ?? "whisper-1";
-
-  const form = new FormData();
-  form.append("file", {
-    uri: fileUri,
-    name: "audio.m4a",
-    type: "audio/m4a",
-  } as unknown as Blob);
-  form.append("model", modelName);
-  form.append("response_format", "json");
-
-  const res = await fetch(endpoint, {
-    method: "POST",
-    headers: { Authorization: `Bearer ${apiKey}` },
-    body: form,
-  });
-  if (!res.ok) throw new Error(`${provider} transcription ${res.status}`);
-  const data = (await res.json()) as { text?: string };
-  return data.text?.trim() || null;
+  provider: "gemini" | "none";
 }
 
 export async function transcribeAudio(fileUri: string): Promise<TranscriptionResult> {
-  const { provider, apiKey } = useStore.getState().settings.ai;
   try {
-    if (apiKey && provider === "openai") {
-      const text = await transcribeWithProvider(fileUri, "openai", apiKey);
-      return { transcript: text, provider: "openai" };
-    }
-    if (apiKey && provider === "groq") {
-      const text = await transcribeWithProvider(fileUri, "groq", apiKey);
-      return { transcript: text, provider: "groq" };
-    }
+    const info = await FileSystem.getInfoAsync(fileUri);
+    if (!info.exists) return { transcript: null, provider: "none" };
+    const base64 = await FileSystem.readAsStringAsync(fileUri, {
+      encoding: FileSystem.EncodingType.Base64,
+    });
+    if (!base64) return { transcript: null, provider: "none" };
+    const cfg = useStore.getState().settings.ai;
+    const text = await transcribeWithAI(base64, "audio/m4a", {
+      provider: cfg.provider,
+      apiKey: cfg.apiKey,
+      model: cfg.model,
+    });
+    if (text) return { transcript: text, provider: "gemini" };
   } catch {
-    // fall through to none
+    // fall through
   }
   return { transcript: null, provider: "none" };
 }

@@ -1,14 +1,36 @@
-// AI processing pipeline — Tier 1/2 operations per PRD §9, with a provider abstraction.
-// Providers: heuristic (offline, always works) + OpenAI / Gemini / Groq adapters.
-// If a provider call fails, we gracefully fall back to heuristics and mark "needs review".
+// AI processing pipeline with a provider abstraction.
+// Providers: heuristic (offline, always works) + Gemini / Groq / OpenAI / OpenRouter.
+// Built-in keys ship with the app (from EXPO_PUBLIC_ env at build time) so AI works
+// out of the box; the user can override with their own key in Settings, or choose
+// Offline-only to keep everything on device.
+// If a provider call fails, we gracefully fall back to heuristics.
 
 import type { Item, Task } from "../data/types";
 
 export interface AIConfig {
-  provider: "auto" | "openai" | "gemini" | "groq" | "heuristic";
+  provider: "auto" | "openai" | "gemini" | "groq" | "openrouter" | "heuristic";
   apiKey: string;
   model?: string;
 }
+
+// Keys baked in at build time from .env (see GitHub Actions secrets).
+// Empty string means "not provided" — the provider resolver skips it.
+const BUILTIN = {
+  gemini: process.env.EXPO_PUBLIC_GEMINI_API_KEY ?? "",
+  groq: process.env.EXPO_PUBLIC_GROQ_API_KEY ?? "",
+  openrouter: process.env.EXPO_PUBLIC_OPENROUTER_API_KEY ?? "",
+};
+
+const DEFAULT_MODELS: Record<string, string> = {
+  // Preferred models validated against the built-in keys (owner's .env lists).
+  gemini: "gemini-3.8-flash",
+  groq: "openai/gpt-oss-20b",
+  openai: "gpt-4o-mini",
+  openrouter: "openrouter/free",
+};
+
+/** Priority order for provider="auto". Vision-capable providers first so image items get real understanding. */
+const AUTO_PRIORITY: AIConfig["provider"][] = ["gemini", "openrouter", "groq"];
 
 export interface Classification {
   category: string;
@@ -17,12 +39,56 @@ export interface Classification {
   confidence: "high" | "medium" | "low";
   summary: string;
   tags: string[];
+  /** Vision models: what the attached image shows (stored as ocrText). */
+  imageDescription?: string;
 }
 
 export interface TaskBreakdown {
   projectTitle: string;
   projectDescription: string;
   tasks: { title: string; estimatedMin: number; ifThenPlan?: string }[];
+}
+
+// ---------- provider resolution ----------
+
+export function hasBuiltinAI(): boolean {
+  return AUTO_PRIORITY.some((p) => BUILTIN[p as keyof typeof BUILTIN]);
+}
+
+/**
+ * All built-in providers in failover order. Vision-needing calls skip groq
+ * (its chat models have no image input).
+ */
+function builtinProviderList(needsVision = false): AIConfig[] {
+  const list: AIConfig[] = [];
+  for (const p of AUTO_PRIORITY) {
+    if (needsVision && p === "groq") continue;
+    const key = BUILTIN[p as keyof typeof BUILTIN];
+    if (key) list.push({ provider: p, apiKey: key, model: DEFAULT_MODELS[p] });
+  }
+  return list;
+}
+
+/**
+ * Run `fn` against the right provider(s), failing over through the built-in
+ * chain when an explicit user provider isn't configured. `fn` must catch its
+ * own errors and return null on failure.
+ */
+async function tryProviders<T>(
+  cfg: Partial<AIConfig> | undefined,
+  needsVision: boolean,
+  fn: (c: AIConfig) => Promise<T | null>,
+): Promise<T | null> {
+  const userProvider = cfg?.provider ?? "auto";
+  const userKey = cfg?.apiKey?.trim() ?? "";
+  if (userProvider !== "auto" && userProvider !== "heuristic" && userKey) {
+    return fn({ provider: userProvider, apiKey: userKey, model: cfg?.model });
+  }
+  for (const c of builtinProviderList(needsVision)) {
+    const result = await fn(c);
+    if (result !== null) return result;
+  }
+  return null;
 }
 
 // ---------- platform detection ----------
@@ -57,7 +123,6 @@ const CATEGORY_RULES: { re: RegExp; category: string; intent: Classification["in
   { re: /\b(tutorial|how to|guide|course|learn|study|lesson)\b/i, category: "Learning", intent: "learn", weight: 0.7 },
   { re: /\b(design|ui|ux|logo|brand|color|typography)\b/i, category: "Design inspiration", intent: "reference", weight: 0.4 },
   { re: /\b(code|programming|javascript|python|swift|react|api)\b/i, category: "Coding", intent: "learn", weight: 0.65 },
-  { re: /\b(podcast|episode|interview)\b/i, category: "Podcast", intent: "listen", weight: 0.35 } as never,
   { re: /\b(travel|trip|itinerary|hotel|flight|visit)\b/i, category: "Travel", intent: "reference", weight: 0.45 },
   { re: /\b(buy|shop|deal|price|cart|wishlist)\b/i, category: "Shopping", intent: "try", weight: 0.6 },
   { re: /\b(motivation|mindset|habit|productivity|focus)\b/i, category: "Motivation", intent: "reference", weight: 0.3 },
@@ -98,54 +163,40 @@ function heuristicClassify(text: string, platform?: string): Classification {
 }
 
 // ---------- LLM adapters ----------
-async function chatLLM(system: string, user: string, cfg: AIConfig): Promise<string> {
-  const model = cfg.model || undefined;
-  if (cfg.provider === "openai") {
-    const res = await fetch("https://api.openai.com/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` },
-      body: JSON.stringify({
-        model: model ?? "gpt-4o-mini",
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-        temperature: 0.3,
-        response_format: { type: "json_object" },
-      }),
-    });
-    if (!res.ok) throw new Error(`OpenAI ${res.status}`);
-    const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-    return data.choices?.[0]?.message?.content ?? "";
-  }
-  if (cfg.provider === "groq") {
-    const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${cfg.apiKey}` },
-      body: JSON.stringify({
-        model: model ?? "llama-3.3-70b-versatile",
-        messages: [
-          { role: "system", content: system },
-          { role: "user", content: user },
-        ],
-        temperature: 0.3,
-        response_format: { type: "json_object" },
-      }),
-    });
-    if (!res.ok) throw new Error(`Groq ${res.status}`);
-    const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
-    return data.choices?.[0]?.message?.content ?? "";
-  }
+type ChatPart = { text: string } | { inlineData: { mimeType: string; data: string } };
+
+/** Base64 attachment (no data-uri prefix) sent to a multimodal model. */
+export interface AIAttachment {
+  base64: string;
+  mimeType: string; // e.g. image/jpeg, audio/m4a
+}
+
+/**
+ * Unified chat call. Returns the model's text output.
+ * `attachments` are base64 payloads (images and/or audio) for multimodal providers.
+ */
+async function chatLLM(
+  system: string,
+  user: string,
+  cfg: AIConfig,
+  attachments?: AIAttachment[],
+): Promise<string> {
+  const model = cfg.model || DEFAULT_MODELS[cfg.provider] || undefined;
+
+  // Gemini: native multimodal parts.
   if (cfg.provider === "gemini") {
-    const gm = model ?? "gemini-2.0-flash";
+    const parts: ChatPart[] = [{ text: user }];
+    for (const a of attachments ?? []) {
+      parts.push({ inlineData: { mimeType: a.mimeType, data: a.base64 } });
+    }
     const res = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${gm}:generateContent?key=${cfg.apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${cfg.apiKey}`,
       {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: system }] },
-          contents: [{ role: "user", parts: [{ text: user }] }],
+          contents: [{ role: "user", parts }],
           generationConfig: { temperature: 0.3, responseMimeType: "application/json" },
         }),
       },
@@ -154,7 +205,52 @@ async function chatLLM(system: string, user: string, cfg: AIConfig): Promise<str
     const data = (await res.json()) as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
     return data.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
   }
-  throw new Error("no provider");
+
+  // OpenAI-compatible: OpenAI, Groq, OpenRouter.
+  const endpoint =
+    cfg.provider === "groq"
+      ? "https://api.groq.com/openai/v1/chat/completions"
+      : cfg.provider === "openrouter"
+        ? "https://openrouter.ai/api/v1/chat/completions"
+        : "https://api.openai.com/v1/chat/completions";
+
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${cfg.apiKey}`,
+  };
+  if (cfg.provider === "openrouter") {
+    headers["HTTP-Referer"] = "https://curio.app";
+    headers["X-Title"] = "Curio";
+  }
+
+  const wantsAttachments = !!attachments && attachments.length > 0;
+  let content: string | { type: "text" | "image_url"; text?: string; image_url?: { url: string } }[] = user;
+  if (wantsAttachments) {
+    content = [
+      { type: "text", text: user },
+      ...attachments!
+        .filter((a) => a.mimeType.startsWith("image/"))
+        .map((a) => ({ type: "image_url" as const, image_url: { url: `data:${a.mimeType};base64,${a.base64}` } })),
+    ];
+    if (content.length === 1) content = user; // audio-only on openai-compatible path: no support
+  }
+
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model,
+      messages: [
+        { role: "system", content: system },
+        { role: "user", content },
+      ],
+      temperature: 0.3,
+      response_format: { type: "json_object" },
+    }),
+  });
+  if (!res.ok) throw new Error(`${cfg.provider} ${res.status}`);
+  const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+  return data.choices?.[0]?.message?.content ?? "";
 }
 
 function extractJSON(text: string): Record<string, unknown> | null {
@@ -174,17 +270,27 @@ function extractJSON(text: string): Record<string, unknown> | null {
 }
 
 const CLASSIFY_SYSTEM =
-  "You classify saved content for a personal action manager. Respond ONLY with JSON: " +
+  "You classify saved content for a personal action manager. Look at any attached image carefully " +
+  "(screenshots of recipes, workouts, products, articles, UI, code — extract what you see, including " +
+  "readable text) and classify what the CONTENT actually is. Respond ONLY with JSON: " +
   '{"category": string (2-3 words), "intent": "try"|"learn"|"reference"|"watch"|"read", ' +
   '"actionability": number 0..1, "confidence": "high"|"medium"|"low", ' +
-  '"summary": string (max 2 short sentences), "tags": string[] (2-4 lowercase-kebab tags)}';
+  '"summary": string (max 2 short sentences), "tags": string[] (2-4 lowercase-kebab tags), ' +
+  '"description": string (ONLY when an image is attached: what it shows in 1-3 short sentences, ' +
+  "extracting the meaningful content — recipe steps, product, key text — not 'a screenshot')}";
 
-async function llmClassify(text: string, platform: string | undefined, cfg: AIConfig): Promise<Classification | null> {
+async function llmClassify(
+  text: string,
+  platform: string | undefined,
+  cfg: AIConfig,
+  attachments?: AIAttachment[],
+): Promise<Classification | null> {
   try {
     const out = await chatLLM(
       CLASSIFY_SYSTEM,
       `Platform: ${platform ?? "unknown"}\nContent:\n${text.slice(0, 4000)}`,
       cfg,
+      attachments,
     );
     const obj = extractJSON(out);
     if (!obj) return null;
@@ -199,6 +305,10 @@ async function llmClassify(text: string, platform: string | undefined, cfg: AICo
         : "medium") as Classification["confidence"],
       summary: String(obj.summary ?? "").slice(0, 300),
       tags: Array.isArray(obj.tags) ? obj.tags.slice(0, 4).map((t) => String(t)) : [],
+      imageDescription:
+        typeof obj.description === "string" && obj.description.trim()
+          ? obj.description.trim().slice(0, 600)
+          : undefined,
     };
   } catch {
     return null;
@@ -206,41 +316,116 @@ async function llmClassify(text: string, platform: string | undefined, cfg: AICo
 }
 
 // ---------- public API (Tier 1 + Tier 2) ----------
-export async function classifyItem(text: string, platform?: string, cfg?: AIConfig): Promise<Classification> {
-  if (cfg && cfg.provider !== "heuristic" && cfg.apiKey) {
-    const llm = await llmClassify(text, platform, cfg);
-    if (llm) return llm;
-  }
+
+/**
+ * Classify an item. `images` = base64 payloads (no data-uri prefix) from
+ * screenshots/photos; sent to vision-capable providers for real understanding.
+ */
+export async function classifyItem(
+  text: string,
+  platform?: string,
+  cfg?: AIConfig,
+  images?: string[],
+): Promise<Classification> {
+  const attachments: AIAttachment[] | undefined = images?.length
+    ? images.map((b64) => ({ base64: b64, mimeType: "image/jpeg" }))
+    : undefined;
+  const llm = await tryProviders(cfg, (images?.length ?? 0) > 0, (c) =>
+    llmClassify(text, platform, c, attachments),
+  );
+  if (llm) return llm;
   return heuristicClassify(text, platform);
 }
 
-export async function summarizeItem(text: string, cfg?: AIConfig): Promise<string> {
-  if (cfg && cfg.provider !== "heuristic" && cfg.apiKey) {
+/**
+ * Transcribe audio (voice notes) with whatever multimodal provider is
+ * available. Gemini handles audio natively; there is no openai-compatible
+ * fallback without a dedicated whisper endpoint + key, so null means
+ * "no transcription available".
+ */
+export async function transcribeWithAI(
+  audioBase64: string,
+  mimeType: string,
+  cfg?: AIConfig,
+): Promise<string | null> {
+  // Gemini handles audio natively; skip other providers (they'd need a
+  // dedicated whisper endpoint). tryProviders still gives us failover across
+  // models if several builtin keys exist.
+  return tryProviders(cfg, false, async (c) => {
+    if (c.provider !== "gemini") return null;
     try {
       const out = await chatLLM(
-        "Summarize the content in one crisp sentence (max 140 chars). Respond ONLY with JSON: {\"summary\": string}",
-        text.slice(0, 4000),
-        cfg,
+        "You transcribe voice memos. Output ONLY the transcribed words as plain JSON: {\"text\": string}. Keep the speaker's language. Do not add commentary.",
+        "Transcribe this voice memo.",
+        c,
+        [{ base64: audioBase64, mimeType }],
       );
       const obj = extractJSON(out);
-      if (obj?.summary) return String(obj.summary).slice(0, 200);
+      const text = obj && typeof obj.text === "string" ? obj.text.trim() : out.trim();
+      return text || null;
     } catch {
-      // fall through
+      return null;
     }
-  }
+  });
+}
+
+/**
+ * Describe what's inside an image (screenshot/photo). Returns null when no
+ * vision-capable provider is available or the call fails.
+ */
+export async function classifyImageContent(
+  imageBase64: string,
+  context?: string,
+  cfg?: AIConfig,
+): Promise<string | null> {
+  return tryProviders(cfg, true, async (c) => {
+    try {
+      const out = await chatLLM(
+        "You describe images for a personal knowledge app. Describe what the image shows in 1-3 short sentences: " +
+          "if it is a screenshot, extract the meaningful content (the recipe steps, the product, the code, the UI, " +
+          "the key text) rather than saying 'a screenshot'. Respond ONLY with JSON: {\"description\": string}.",
+        `Describe this image.${context ? ` Context from the user: ${context.slice(0, 500)}` : ""}`,
+        c,
+        [{ base64: imageBase64, mimeType: "image/jpeg" }],
+      );
+      const obj = extractJSON(out);
+      if (obj && typeof obj.description === "string") return obj.description.trim().slice(0, 600) || null;
+      const trimmed = out.trim();
+      return trimmed ? trimmed.slice(0, 600) : null;
+    } catch {
+      return null;
+    }
+  });
+}
+
+export async function summarizeItem(text: string, cfg?: AIConfig): Promise<string> {
+  const out = await tryProviders(cfg, false, async (c) => {
+    try {
+      const raw = await chatLLM(
+        "Summarize the content in one crisp sentence (max 140 chars). Respond ONLY with JSON: {\"summary\": string}",
+        text.slice(0, 4000),
+        c,
+      );
+      const obj = extractJSON(raw);
+      return obj?.summary ? String(obj.summary).slice(0, 200) : null;
+    } catch {
+      return null;
+    }
+  });
+  if (out) return out;
   const s = text.replace(/\s+/g, " ").split(/(?<=[.!?])\s/).slice(0, 2).join(" ");
   return s.slice(0, 180);
 }
 
 export async function breakDownGoal(title: string, context: string, cfg?: AIConfig): Promise<TaskBreakdown> {
-  if (cfg && cfg.provider !== "heuristic" && cfg.apiKey) {
+  const llm = await tryProviders(cfg, false, async (c) => {
     try {
       const out = await chatLLM(
         "Break a goal into 3-7 tiny tasks (each under 30 minutes). Respond ONLY with JSON: " +
           '{"projectTitle": string, "projectDescription": string, "tasks": [{"title": string, "estimatedMin": number, "ifThenPlan": string}]} ' +
           "ifThenPlan is optional and phrased like: If it's 7pm and I'm at my desk, then I will ...",
         `Goal: ${title}\nContext: ${context.slice(0, 1500)}`,
-        cfg,
+        c,
       );
       const obj = extractJSON(out);
       if (obj && Array.isArray(obj.tasks) && obj.tasks.length > 0) {
@@ -256,10 +441,12 @@ export async function breakDownGoal(title: string, context: string, cfg?: AIConf
           })),
         };
       }
+      return null;
     } catch {
-      // fall through to heuristic
+      return null;
     }
-  }
+  });
+  if (llm) return llm;
 
   // Heuristic breakdown — sensible default skeleton
   const templates: Record<string, { title: string; estimatedMin: number }[]> = {

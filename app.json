@@ -1,24 +1,24 @@
 {
   "expo": {
-    "name": "Cute Manager",
-    "slug": "cute-manager",
+    "name": "Curio",
+    "slug": "curio",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
-    "scheme": "cute-manager",
+    "scheme": "curio",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.freecuff.cutemanager",
+      "bundleIdentifier": "com.freecuff.curio",
       "infoPlist": {
-        "NSPhotoLibraryUsageDescription": "Cute Manager lets you attach screenshots and photos to your inbox so the AI can understand them.",
-        "NSPhotoLibraryAddUsageDescription": "Cute Manager can save images you choose back to your photo library.",
-        "NSMicrophoneUsageDescription": "Cute Manager records voice notes only when you tap the microphone.",
+        "NSPhotoLibraryUsageDescription": "Curio lets you attach screenshots and photos to your inbox so the AI can understand them.",
+        "NSPhotoLibraryAddUsageDescription": "Curio can save images you choose back to your photo library.",
+        "NSMicrophoneUsageDescription": "Curio records voice notes only when you tap the microphone.",
         "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "com.freecuff.cutemanager",
+      "package": "com.freecuff.curio",
       "adaptiveIcon": {
         "backgroundColor": "#FFFFFF",
         "foregroundImage": "./assets/adaptive-icon.png"
@@ -30,20 +30,7 @@
     },
     "plugins": [
       "expo-router",
-      [
-        "expo-share-intent",
-        {
-          "iosActivationRules": {
-            "NSExtensionActivationSupportsWebURLWithMaxCount": 1,
-            "NSExtensionActivationSupportsWebPageWithMaxCount": 1,
-            "NSExtensionActivationSupportsText": true,
-            "NSExtensionActivationSupportsImageWithMaxCount": 1,
-            "NSExtensionActivationSupportsMovieWithMaxCount": 1,
-            "NSExtensionActivationSupportsFileWithMaxCount": 1
-          },
-          "iosShareExtensionName": "ShareToCuteManager"
-        }
-      ],
+      "./plugins/curio-share",
       "expo-image",
       "expo-asset",
       "expo-sharing",

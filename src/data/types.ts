@@ -116,7 +116,7 @@ export interface WeeklyReview {
 
 export interface Settings {
   ai: {
-    provider: "auto" | "openai" | "gemini" | "groq" | "heuristic";
+    provider: "auto" | "openai" | "gemini" | "groq" | "openrouter" | "heuristic";
     apiKey: string;
     model?: string;
   };

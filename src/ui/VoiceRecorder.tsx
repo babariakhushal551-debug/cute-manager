@@ -35,7 +35,7 @@ export function VoiceRecorder({ onSaved }: { onSaved: (result: VoiceRecordingRes
   async function start() {
     const perm = await requestRecordingPermissionsAsync();
     if (!perm.granted) {
-      Alert.alert("Microphone off", "Enable the microphone for Cute Manager in iOS Settings to record voice notes.");
+      Alert.alert("Microphone off", "Enable the microphone for Curio in iOS Settings to record voice notes.");
       return;
     }
     haptic.tap();

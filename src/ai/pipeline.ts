@@ -3,6 +3,7 @@ import { classifyItem, itemToText, detectPlatform, breakDownGoal } from "../ai/a
 import { getCached, setCached, flush } from "../ai/cache";
 import { findSimilar } from "../ai/duplicates";
 import { transcribeAudio } from "../services/transcription";
+import { prepareImageBase64 } from "../services/vision";
 import { useStore } from "../data/store";
 import type { Item, Project, Task } from "../data/types";
 
@@ -25,14 +26,29 @@ export async function processItem(item: Item) {
     }
   }
 
+  // Image items: downscale + base64 for the vision model. The classification
+  // call returns the image description too (single AI round-trip), stored as
+  // ocrText — feeds search, summaries, and the item detail view.
+  let imageBase64: string | undefined;
+  if (item.type === "image" && item.fileUri) {
+    const base64 = await prepareImageBase64(item.fileUri);
+    if (base64) {
+      imageBase64 = base64;
+    }
+  }
+
   const text = itemToText(item);
   const platform = item.sourcePlatform ?? (item.sourceUrl ? detectPlatform(item.sourceUrl) : undefined);
 
   let classification = await getCached(text);
   if (!classification) {
-    classification = await classifyItem(text, platform, aiConfig());
+    classification = await classifyItem(text, platform, aiConfig(), imageBase64 ? [imageBase64] : undefined);
     await setCached(text, classification);
     void flush();
+  }
+
+  if (classification.imageDescription) {
+    useStore.getState().updateItem(item.id, { ocrText: classification.imageDescription });
   }
 
   // tag linking

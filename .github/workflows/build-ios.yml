@@ -17,6 +17,12 @@ jobs:
     # expo-modules-jsi's Swift source; see expo/expo#47819).
     runs-on: macos-26
     timeout-minutes: 90
+    env:
+      # Built-in AI keys, baked into the JS bundle when Metro runs during the
+      # xcodebuild Archive step (NOT just prebuild — vars must exist there).
+      EXPO_PUBLIC_GEMINI_API_KEY: ${{ secrets.EXPO_PUBLIC_GEMINI_API_KEY }}
+      EXPO_PUBLIC_GROQ_API_KEY: ${{ secrets.EXPO_PUBLIC_GROQ_API_KEY }}
+      EXPO_PUBLIC_OPENROUTER_API_KEY: ${{ secrets.EXPO_PUBLIC_OPENROUTER_API_KEY }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -86,7 +92,7 @@ jobs:
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: cute-manager-unsigned-ipa
+          name: cute-manager-unsigned-ipa-${{ github.ref_name }}
           path: ios/build/cute-unsigned.ipa
           if-no-files-found: error
           retention-days: 30

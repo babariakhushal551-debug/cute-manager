@@ -155,7 +155,7 @@ export default function CaptureScreen() {
           {voiceHint ? (
             <Card style={{ marginTop: space.m, padding: space.m }}>
               <Text style={{ ...typography.footnote, color: palette.inkDim, lineHeight: 18 }}>
-                💡 Saved! For automatic transcription, add an OpenAI or Groq key in Settings → AI brain.
+                💡 Saved! Transcription isn't available right now — check your connection or AI settings.
               </Text>
             </Card>
           ) : null}

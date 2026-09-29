@@ -17,7 +17,9 @@ import type {
   WeeklyReview,
 } from "./types";
 
-const KEY = "@cute-manager/state-v1";
+const KEY = "@curio/state-v1";
+// Pre-rename storage key ("Cute Manager" era) — migrated once on first hydrate.
+const LEGACY_KEY = "@cute-manager/state-v1";
 
 export const DEFAULT_SETTINGS: Settings = {
   ai: { provider: "auto", apiKey: "" },
@@ -76,7 +78,11 @@ export const useStore = create<Store>((set, get) => ({
 
   hydrate: async () => {
     try {
-      const raw = await AsyncStorage.getItem(KEY);
+      let raw = await AsyncStorage.getItem(KEY);
+      if (!raw) {
+        // One-time migration from the pre-rename key.
+        raw = await AsyncStorage.getItem(LEGACY_KEY);
+      }
       if (raw) {
         const parsed = JSON.parse(raw) as Partial<AppState>;
         set({
