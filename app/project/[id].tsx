@@ -5,6 +5,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { ScrollView } from "react-native-gesture-handler";
 import { useLocalSearchParams, router, Stack } from "expo-router";
 import { useTheme } from "../../src/theme/theme";
+import { useShallow } from "zustand/react/shallow";
 import { useStore, projectProgress } from "../../src/data/store";
 import { breakDownGoal } from "../../src/ai/aiService";
 import { Button, Card, SectionTitle, Symbol, ProgressRing } from "../../src/ui/primitives";
@@ -72,7 +73,7 @@ export default function ProjectScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const { palette, typography, space, radius } = useTheme();
   const project = useStore((s) => s.projects.find((p) => p.id === id));
-  const tasks = useStore((s) => s.tasks.filter((t) => t.projectId === id && t.status !== "CANCELLED"));
+  const tasks = useStore(useShallow((s) => s.tasks.filter((t) => t.projectId === id && t.status !== "CANCELLED")));
   const addTask = useStore((s) => s.addTask);
   const updateProject = useStore((s) => s.updateProject);
   const [newTask, setNewTask] = useState("");

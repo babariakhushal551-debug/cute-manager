@@ -4,6 +4,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, router } from "expo-router";
 import { Image } from "expo-image";
 import { useTheme } from "../../src/theme/theme";
+import { useShallow } from "zustand/react/shallow";
 import { useStore } from "../../src/data/store";
 import { archiveItem, createProjectFromItem, dismissItem, saveAsReference } from "../../src/ai/pipeline";
 import { findRelated } from "../../src/ai/related";
@@ -15,7 +16,7 @@ export default function ItemScreen() {
   const { palette, typography, space, radius } = useTheme();
   const item = useStore((s) => s.items.find((i) => i.id === id));
   const tags = useStore((s) => s.tags);
-  const itemTags = useStore((s) => s.itemTags.filter((it) => it.itemId === id));
+  const itemTags = useStore(useShallow((s) => s.itemTags.filter((it) => it.itemId === id)));
   const allItems = useStore((s) => s.items);
   const allItemTags = useStore((s) => s.itemTags);
 

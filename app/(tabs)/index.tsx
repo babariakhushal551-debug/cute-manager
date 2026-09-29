@@ -5,6 +5,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "../../src/theme/theme";
+import { useShallow } from "zustand/react/shallow";
 import { useStore, selectOpenTasks } from "../../src/data/store";
 import { generateDailyPlan } from "../../src/ai/aiService";
 import { Button, Card, Chip, EmptyState, SectionTitle, Symbol } from "../../src/ui/primitives";
@@ -82,9 +83,9 @@ function FocusTimer({ minutes, onDone, onClose }: { minutes: number; onDone: () 
 function MotiPct({ pct, minutes, mm, ss, palette, radius }: any) {
   void MotiPct;
   void pct;
-  const { space, typography } = useTheme();
+  const { typography } = useTheme();
   return (
-    <View style={{ alignItems: "center", ...space }}>
+    <View style={{ alignItems: "center" }}>
       <View
         style={{
           width: 210,
@@ -109,7 +110,9 @@ function MotiPct({ pct, minutes, mm, ss, palette, radius }: any) {
 
 export default function TodayScreen() {
   const { palette, typography, space, radius, shadow } = useTheme();
-  const tasks = useStore(selectOpenTasks);
+  // useShallow: selectOpenTasks returns a new array each call; in zustand v5
+  // an unstable array snapshot re-renders on every store change (Object.is check fails).
+  const tasks = useStore(useShallow(selectOpenTasks));
   const projects = useStore((s) => s.projects);
   const items = useStore((s) => s.items);
   const updateTask = useStore((s) => s.updateTask);

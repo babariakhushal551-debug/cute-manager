@@ -116,7 +116,7 @@ export function Button({
   small?: boolean;
   disabled?: boolean;
 }) {
-  const { palette, radius, typography, shadow } = useTheme();
+  const { palette, radius, typography, shadow, dark } = useTheme();
   const pad = small ? { paddingHorizontal: 14, paddingVertical: 8 } : { paddingHorizontal: 18, paddingVertical: 12 };
   if (variant === "primary") {
     return (
@@ -145,7 +145,7 @@ export function Button({
     );
   }
   const bg =
-    variant === "danger" ? "rgba(255,93,85,0.12)" : variant === "soft" ? (useTheme().dark ? "rgba(255,255,255,0.07)" : palette.surfaceAlt) : "transparent";
+    variant === "danger" ? "rgba(255,93,85,0.12)" : variant === "soft" ? (dark ? "rgba(255,255,255,0.07)" : palette.surfaceAlt) : "transparent";
   const fg = variant === "danger" ? palette.red : palette.ink;
   return (
     <Pressable

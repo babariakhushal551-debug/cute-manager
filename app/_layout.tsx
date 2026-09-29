@@ -65,8 +65,10 @@ function Shell() {
   );
 }
 
+// NOTE: RootLayout must not call useTheme() itself — the ThemeProvider only
+// exists below it, and useTheme() throws when used outside the provider.
+// Reading the theme inside <Shell /> (which renders under the provider) is safe.
 export default function RootLayout() {
-  const { dark } = useTheme();
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>

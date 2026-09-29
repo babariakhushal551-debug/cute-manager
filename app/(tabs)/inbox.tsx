@@ -6,6 +6,7 @@ import { FlashList } from "@shopify/flash-list";
 import { Image } from "expo-image";
 import { router } from "expo-router";
 import { useTheme } from "../../src/theme/theme";
+import { useShallow } from "zustand/react/shallow";
 import { useStore, selectInbox } from "../../src/data/store";
 import { createProjectFromItem, saveAsReference, dismissItem, archiveItem } from "../../src/ai/pipeline";
 import { findSimilar } from "../../src/ai/duplicates";
@@ -166,7 +167,9 @@ function ItemCard({ item }: { item: Item }) {
 
 export default function InboxScreen() {
   const { palette, typography, space, radius } = useTheme();
-  const items = useStore(selectInbox);
+  // useShallow: selectInbox returns a fresh array; zustand v5 needs shallow
+  // equality or this re-renders (and loops) on every store change.
+  const items = useStore(useShallow(selectInbox));
   const [filter, setFilter] = useState<"all" | ItemType>("all");
 
   const filtered = useMemo(

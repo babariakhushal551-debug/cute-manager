@@ -4,7 +4,7 @@ import { Platform, View, type ColorValue } from "react-native";
 import { BlurView } from "expo-blur";
 import { useTheme } from "../../src/theme/theme";
 import { Symbol } from "../../src/ui/primitives";
-import { useStore, selectInbox } from "../../src/data/store";
+import { useStore } from "../../src/data/store";
 
 function TabIcon({ name, focused, color }: { name: string; focused: boolean; color: ColorValue }) {
   return (
@@ -16,7 +16,9 @@ function TabIcon({ name, focused, color }: { name: string; focused: boolean; col
 
 export default function TabsLayout() {
   const { palette, dark } = useTheme();
-  const inboxCount = useStore(selectInbox).filter((i) => i.status === "INBOX").length;
+  // Return a primitive count, not the filtered array — zustand v5 fails the
+  // Object.is snapshot check on freshly-created arrays and re-renders forever.
+  const inboxCount = useStore((s) => s.items.filter((i) => i.status === "INBOX").length);
 
   return (
     <Tabs
